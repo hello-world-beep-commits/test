@@ -6,7 +6,7 @@ const geoUsername = 'geome12';
 let selectedCity = { name: '', lat: null, lng: null };
 
 // Utility: debounce to limit API calls while typing
-function debounce(func, wait = 300) {
+function debounce(func, wait = 10000) {
   let timeout;
   return function (...args) {
     clearTimeout(timeout);
