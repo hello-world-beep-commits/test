@@ -7,12 +7,35 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Job Aggregator</h1>
-  <input type="text" id="searchInput" placeholder="Enter job title..." />
-  <input type="text" id="locationInput" placeholder="Enter location (e.g., New York)" />
-  <button onclick="searchJobs()">Search</button>
-  <div id="results"></div>
+ <div class="filters">
+  <input type="text" id="searchInput" placeholder="Job title or keywords..." />
+  <input type="text" id="locationInput" placeholder="Location (e.g., New York)" />
 
-  <script src="script.js"></script>
+  <select id="jobType">
+    <option value="">Any Type</option>
+    <option value="full_time">Full-time</option>
+    <option value="part_time">Part-time</option>
+    <option value="contract">Contract</option>
+  </select>
+
+  <input type="number" id="distance" placeholder="Distance (miles)" min="1" />
+
+  <select id="datePosted">
+    <option value="">Any Time</option>
+    <option value="1">Last 24 Hours</option>
+    <option value="3">Last 3 Days</option>
+    <option value="7">Last 7 Days</option>
+  </select>
+
+  <input type="number" id="minSalary" placeholder="Min Salary ($)" min="0" />
+
+  <label>
+    <input type="checkbox" id="remoteOnly" />
+    Remote Only
+  </label>
+
+  <button onclick="searchJobs()">Search</button>
+</div>
+
 </body>
 </html>
