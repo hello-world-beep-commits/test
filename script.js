@@ -1,12 +1,21 @@
+const geoUsername = 'geome12';
 const app_id = '0a5f1cc3';
 const app_key = '43d28d497bb3fa7ec7615da367c13ae7';
-const geoUsername = 'geome12';
 
-// For storing selected city details from autocomplete
-let selectedCity = { name: '', lat: null, lng: null };
+const locationInput = document.getElementById('locationInput');
+const searchInput = document.getElementById('searchInput');
+const resultsDiv = document.getElementById('results');
+const savedJobsModal = document.getElementById('savedJobsModal');
+const savedJobsList = document.getElementById('savedJobsList');
+const showSavedJobsBtn = document.getElementById('showSavedJobsBtn');
+const closeModalBtn = document.getElementById('closeModalBtn');
+const searchBtn = document.getElementById('searchBtn');
+const previousSearchesDiv = document.getElementById('previousSearches');
 
-// Utility: debounce to limit API calls while typing
-function debounce(func, wait = 10000) {
+let selectedCity = { lat: null, lng: null };
+
+// --- Debounce ---
+function debounce(func, wait = 300) {
   let timeout;
   return function (...args) {
     clearTimeout(timeout);
@@ -14,85 +23,69 @@ function debounce(func, wait = 10000) {
   };
 }
 
-// Autocomplete city suggestions using GeoNames API
+// --- Autocomplete ---
+const autocompleteListId = 'autocomplete-list';
+
+function closeAutocomplete() {
+  const oldList = document.getElementById(autocompleteListId);
+  if (oldList) oldList.parentNode.removeChild(oldList);
+}
+
 async function getCitySuggestions(query) {
   if (query.length < 3) return [];
-
   const url = `https://secure.geonames.org/searchJSON?name_startsWith=${encodeURIComponent(query)}&maxRows=5&username=${geoUsername}`;
-
   try {
     const res = await fetch(url);
     const data = await res.json();
-    if (!data.geonames) return [];
-    return data.geonames.map(place => ({
-      name: place.name,
-      country: place.countryName,
-      lat: place.lat,
-      lng: place.lng,
-    }));
+    return data.geonames || [];
   } catch (err) {
-    console.error('GeoNames API error:', err);
+    console.error('GeoNames error:', err);
     return [];
   }
 }
 
-// Show autocomplete dropdown for locationInput
-const locationInput = document.getElementById('locationInput');
-const autocompleteListId = 'autocomplete-list';
-
-function closeAutocomplete() {
-  const list = document.getElementById(autocompleteListId);
-  if (list) list.parentNode.removeChild(list);
-}
-
-function createAutocompleteList(suggestions) {
+const showAutocomplete = debounce(async function () {
+  const query = locationInput.value.trim();
+  selectedCity = { lat: null, lng: null };
   closeAutocomplete();
-  if (suggestions.length === 0) return;
 
-  const list = document.createElement('div');
-  list.id = autocompleteListId;
-  list.style.border = '1px solid #ccc';
-  list.style.position = 'absolute';
-  list.style.backgroundColor = '#fff';
-  list.style.zIndex = 1000;
-  list.style.maxHeight = '150px';
-  list.style.overflowY = 'auto';
-  list.style.width = locationInput.offsetWidth + 'px';
+  if (query.length < 3) return;
 
-  suggestions.forEach(s => {
-    const item = document.createElement('div');
-    item.style.padding = '8px';
-    item.style.cursor = 'pointer';
-    item.textContent = `${s.name}, ${s.country}`;
-    item.addEventListener('click', () => {
-      locationInput.value = `${s.name}, ${s.country}`;
-      selectedCity = { name: s.name, lat: s.lat, lng: s.lng };
+  const results = await getCitySuggestions(query);
+  if (!results.length) return;
+
+  const container = document.createElement('div');
+  container.id = autocompleteListId;
+  container.style.border = '1px solid #ccc';
+  container.style.position = 'absolute';
+  container.style.backgroundColor = '#fff';
+  container.style.zIndex = '1000';
+  container.style.width = locationInput.offsetWidth + 'px';
+  container.style.maxHeight = '150px';
+  container.style.overflowY = 'auto';
+
+  results.forEach(item => {
+    const div = document.createElement('div');
+    div.style.padding = '8px';
+    div.style.cursor = 'pointer';
+    div.textContent = `${item.name}, ${item.countryName}`;
+    div.addEventListener('click', () => {
+      locationInput.value = `${item.name}, ${item.countryName}`;
+      selectedCity = { lat: item.lat, lng: item.lng };
       closeAutocomplete();
     });
-    list.appendChild(item);
+    container.appendChild(div);
   });
 
-  locationInput.parentNode.appendChild(list);
-}
+  locationInput.parentNode.appendChild(container);
+}, 300);
 
-// Debounced handler for input event
-locationInput.addEventListener('input', debounce(async (e) => {
-  selectedCity = { name: '', lat: null, lng: null }; // reset selection on new input
-  const val = e.target.value;
-  if (val.length < 3) {
-    closeAutocomplete();
-    return;
-  }
-  const suggestions = await getCitySuggestions(val);
-  createAutocompleteList(suggestions);
-}));
-
-// Close autocomplete when clicking outside
-document.addEventListener('click', (e) => {
+locationInput.addEventListener('input', showAutocomplete);
+document.addEventListener('click', e => {
   if (e.target !== locationInput) closeAutocomplete();
 });
 
-// Save recent search keywords to localStorage (max 5)
+// --- Local Storage for Recent Searches ---
 function saveSearchTerm(term) {
   if (!term) return;
   let searches = JSON.parse(localStorage.getItem('recentSearches')) || [];
@@ -102,16 +95,117 @@ function saveSearchTerm(term) {
     if (searches.length > 5) searches.pop();
   }
   localStorage.setItem('recentSearches', JSON.stringify(searches));
+  renderPreviousSearches();
 }
 
-// Get saved recent searches
 function getSavedSearchTerms() {
   return JSON.parse(localStorage.getItem('recentSearches')) || [];
 }
 
-// Search jobs on Adzuna API with filters and location
+function renderPreviousSearches() {
+  const searches = getSavedSearchTerms();
+  previousSearchesDiv.innerHTML = '';
+  if (!searches.length) return;
+  previousSearchesDiv.innerHTML = '<strong>Previous searches:</strong> ';
+  searches.forEach(term => {
+    const span = document.createElement('span');
+    span.textContent = term;
+    span.addEventListener('click', () => {
+      searchInput.value = term;
+      searchJobs();
+    });
+    previousSearchesDiv.appendChild(span);
+  });
+}
+
+// --- Saved Jobs Management ---
+function getSavedJobs() {
+  return JSON.parse(localStorage.getItem('savedJobs')) || [];
+}
+
+function saveJob(job) {
+  let saved = getSavedJobs();
+  if (!saved.find(j => j.id === job.id)) {
+    saved.push({...job, applied: false, savedAt: Date.now()});
+    localStorage.setItem('savedJobs', JSON.stringify(saved));
+    alert('Job saved!');
+  } else {
+    alert('Job already saved.');
+  }
+}
+
+function toggleApplied(jobId) {
+  let saved = getSavedJobs();
+  saved = saved.map(j => {
+    if (j.id === jobId) j.applied = !j.applied;
+    return j;
+  });
+  localStorage.setItem('savedJobs', JSON.stringify(saved));
+  renderSavedJobs();
+}
+
+function removeJob(jobId) {
+  let saved = getSavedJobs();
+  saved = saved.filter(j => j.id !== jobId);
+  localStorage.setItem('savedJobs', JSON.stringify(saved));
+  renderSavedJobs();
+}
+
+function renderSavedJobs() {
+  const saved = getSavedJobs();
+  savedJobsList.innerHTML = '';
+  if (saved.length === 0) {
+    savedJobsList.innerHTML = '<p>No saved jobs.</p>';
+    return;
+  }
+
+  saved.forEach(job => {
+    const jobDiv = document.createElement('div');
+    jobDiv.className = 'job';
+    if (isExpired(job.created)) jobDiv.classList.add('expired');
+
+    jobDiv.innerHTML = `
+      <h3>${job.title}</h3>
+      <p><strong>Company:</strong> ${job.company}</p>
+      <p><strong>Location:</strong> ${job.location}</p>
+      <p>${job.description ? job.description.substring(0, 150) : ''}...</p>
+      <p class="job-source">Source: ${job.source || 'Unknown'}</p>
+      <p><a href="${job.url}" target="_blank" rel="noopener noreferrer">View Job</a></p>
+      <div class="job-actions">
+        <label><input type="checkbox" ${job.applied ? 'checked' : ''} data-id="${job.id}" class="applied-checkbox" /> Applied</label>
+        <button data-id="${job.id}" class="remove-job-btn">Remove</button>
+      </div>
+    `;
+    savedJobsList.appendChild(jobDiv);
+  });
+
+  // Attach events for checkboxes and remove buttons
+  document.querySelectorAll('.applied-checkbox').forEach(cb => {
+    cb.addEventListener('change', e => {
+      toggleApplied(e.target.dataset.id);
+    });
+  });
+
+  document.querySelectorAll('.remove-job-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      removeJob(e.target.dataset.id);
+    });
+  });
+}
+
+// --- Utility to check expiration ---
+function isExpired(createdStr) {
+  if (!createdStr) return false;
+  const createdDate = new Date(createdStr);
+  const now = new Date();
+  const diffDays = (now - createdDate) / (1000 * 3600 * 24);
+  // Let's say jobs older than 30 days are expired
+  return diffDays > 30;
+}
+
+// --- Job Search ---
 async function searchJobs() {
-  const query = document.getElementById('searchInput').value.trim();
+  const query = searchInput.value.trim();
   if (!query) {
     alert('Please enter job keywords');
     return;
@@ -119,25 +213,21 @@ async function searchJobs() {
 
   saveSearchTerm(query);
 
-  const locationVal = document.getElementById('locationInput').value.trim();
-  const jobType = document.getElementById('jobType')?.value || '';
-  const distance = document.getElementById('distance')?.value || '';
-  const daysOld = document.getElementById('datePosted')?.value || '';
-  const minSalary = document.getElementById('minSalary')?.value || '';
-  const remoteOnly = document.getElementById('remoteOnly')?.checked || false;
+  const locationVal = locationInput.value.trim();
+  const jobType = document.getElementById('jobType').value;
+  const distance = document.getElementById('distance').value;
+  const daysOld = document.getElementById('datePosted').value;
+  const minSalary = document.getElementById('minSalary').value;
+  const remoteOnly = document.getElementById('remoteOnly').checked;
 
-  const resultsDiv = document.getElementById('results');
   resultsDiv.innerHTML = 'Loading jobs...';
 
-  // Build API URL
-  let apiUrl = `https://api.adzuna.com/v1/api/jobs/us/search/1?app_id=${app_id}&app_key=${app_key}&results_per_page=10&what=${encodeURIComponent(query)}`;
+  let apiUrl = `https://api.adzuna.com/v1/api/jobs/us/search/1?app_id=${app_id}&app_key=${app_key}&results_per_page=15&what=${encodeURIComponent(query)}`;
 
-  // If user selected city from autocomplete, use lat/lng + distance
   if (selectedCity.lat && selectedCity.lng) {
     apiUrl += `&lat=${selectedCity.lat}&lng=${selectedCity.lng}`;
     if (distance) apiUrl += `&distance=${distance}`;
   } else if (locationVal) {
-    // fallback: pass location as text if no lat/lng
     apiUrl += `&where=${encodeURIComponent(locationVal)}`;
   }
 
@@ -162,25 +252,46 @@ async function searchJobs() {
     resultsDiv.innerHTML = '';
 
     data.results.forEach(job => {
-      const isRemote =
-        (job.description && job.description.toLowerCase().includes('remote')) ||
-        (job.title && job.title.toLowerCase().includes('remote'));
+      const isRemote = (job.description && job.description.toLowerCase().includes('remote')) ||
+                       (job.title && job.title.toLowerCase().includes('remote'));
 
       if (remoteOnly && !isRemote) return;
 
       const jobDiv = document.createElement('div');
       jobDiv.className = 'job';
-      jobDiv.style.border = '1px solid #ccc';
-      jobDiv.style.marginBottom = '10px';
-      jobDiv.style.padding = '10px';
+      if (isExpired(job.created)) jobDiv.classList.add('expired');
+
+      const jobId = job.id || job.redirect_url || (job.title + job.company.display_name + job.location.display_name);
+
       jobDiv.innerHTML = `
         <h3>${job.title}</h3>
         <p><strong>Company:</strong> ${job.company.display_name}</p>
         <p><strong>Location:</strong> ${job.location.display_name}</p>
         <p>${job.description ? job.description.substring(0, 200) : ''}...</p>
+        <p class="job-source">Source: Adzuna</p>
         <a href="${job.redirect_url}" target="_blank" rel="noopener noreferrer">View Job</a>
+        <div class="job-actions">
+          <button data-job='${encodeURIComponent(JSON.stringify({
+            id: jobId,
+            title: job.title,
+            company: job.company.display_name,
+            location: job.location.display_name,
+            description: job.description,
+            source: 'Adzuna',
+            url: job.redirect_url,
+            created: job.created
+          }))}' class="save-job-btn">Save Job</button>
+        </div>
       `;
       resultsDiv.appendChild(jobDiv);
+    });
+
+    // Add listeners for save buttons
+    document.querySelectorAll('.save-job-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const jobData = JSON.parse(decodeURIComponent(e.target.dataset.job));
+        saveJob(jobData);
+      });
     });
   } catch (err) {
     console.error('Job search error:', err);
@@ -188,53 +299,35 @@ async function searchJobs() {
   }
 }
 
-// Show recommended jobs based on saved searches
-async function showRecommendedJobs() {
-  const searches = getSavedSearchTerms();
-  const recommendedDiv = document.getElementById('recommendedResults');
-  recommendedDiv.innerHTML = '';
-
-  if (searches.length === 0) {
-    recommendedDiv.innerHTML = '<p>No recommendations yet. Start searching jobs!</p>';
-    return;
-  }
-
-  recommendedDiv.innerHTML = '<p>Showing jobs based on your recent searches: ' + searches.join(', ') + '</p>';
-
-  const topTerm = searches[0];
-  let apiUrl = `https://api.adzuna.com/v1/api/jobs/us/search/1?app_id=${app_id}&app_key=${app_key}&results_per_page=5&what=${encodeURIComponent(topTerm)}`;
-
-  // Use selected city lat/lng for distance filtering if available
-  if (selectedCity.lat && selectedCity.lng) {
-    apiUrl += `&lat=${selectedCity.lat}&lng=${selectedCity.lng}&distance=25`; // 25 miles radius default
-  }
-
-  try {
-    const res = await fetch(apiUrl);
-    const data = await res.json();
-
-    if (!data.results || data.results.length === 0) {
-      recommendedDiv.innerHTML += '<p>No recommended jobs found.</p>';
-      return;
-    }
-
-    data.results.forEach(job => {
-      const jobDiv = document.createElement('div');
-      jobDiv.className = 'job';
-      jobDiv.style.border = '1px solid #ccc';
-      jobDiv.style.marginBottom = '10px';
-      jobDiv.style.padding = '10px';
-      jobDiv.innerHTML = `
-        <h3>${job.title}</h3>
-        <p><strong>Company:</strong> ${job.company.display_name}</p>
-        <p><strong>Location:</strong> ${job.location.display_name}</p>
-        <p>${job.description ? job.description.substring(0, 150) : ''}...</p>
-        <a href="${job.redirect_url}" target="_blank" rel="noopener noreferrer">View Job</a>
-      `;
-      recommendedDiv.appendChild(jobDiv);
-    });
-  } catch (err) {
-    console.error('Recommended jobs error:', err);
-    recommendedDiv.innerHTML += '<p>Error loading recommended jobs.</p>';
+// --- Show saved jobs modal ---
+function toggleSavedJobsModal(show) {
+  if (show) {
+    renderSavedJobs();
+    savedJobsModal.style.display = 'block';
+  } else {
+    savedJobsModal.style.display = 'none';
   }
 }
+
+// --- Init ---
+function init() {
+  renderPreviousSearches();
+
+  // Show last search automatically if exists
+  const searches = getSavedSearchTerms();
+  if (searches.length > 0) {
+    searchInput.value = searches[0];
+    searchJobs();
+  }
+}
+
+// --- Event Listeners ---
+searchBtn.addEventListener('click', searchJobs);
+showSavedJobsBtn.addEventListener('click', () => toggleSavedJobsModal(true));
+closeModalBtn.addEventListener('click', () => toggleSavedJobsModal(false));
+window.addEventListener('click', e => {
+  if (e.target === savedJobsModal) toggleSavedJobsModal(false);
+});
+
+// Start
+init();
