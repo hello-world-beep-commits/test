@@ -18,3 +18,16 @@ input {
   margin-bottom: 15px;
   border-radius: 5px;
 }
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.filters input,
+.filters select,
+.filters button {
+  padding: 8px;
+  font-size: 14px;
+}
